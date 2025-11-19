@@ -34,8 +34,7 @@ def Executar_Comando(SQL_Comando, Valores=None, Pegar_Dados=False):
         if Pegar_Dados:
             Dados = Cursor.fetchall()
             Colunas = [c[0] for c in Cursor.description]
-            Tabela = pd.DataFrame(Dados, columns=Colunas)
-            return Tabela
+            return pd.DataFrame(Dados, columns=Colunas)
 
         Conexao.commit()
         return True
@@ -48,19 +47,45 @@ def Executar_Comando(SQL_Comando, Valores=None, Pegar_Dados=False):
     finally:
         Cursor.close()
 
-def Inserir_Pokemon(NomePokemon, Tipo1, Tipo2):
-    SQL = "Insert Into pokemons (nome, tipo1, tipo2) Values (%s, %s, %s)"
-    return Executar_Comando(SQL, (NomePokemon, Tipo1, Tipo2))
+def Inserir_Treinador(Nome, Cidade):
+    SQL = "INSERT INTO treinadores (nome, cidade) VALUES (%s, %s)"
+    return Executar_Comando(SQL, (Nome, Cidade))
 
-def Pegar_Pokemons():
-    SQL = "Select id, nome, tipo1, tipo2 From pokemons Order By id DESC"
+def Pegar_Treinadores():
+    SQL = "SELECT id, nome, cidade FROM treinadores ORDER BY nome ASC"
     return Executar_Comando(SQL, Pegar_Dados=True)
 
+def Inserir_Pokemon(NomePokemon, Tipo1, Tipo2, TreinadorID):
+    SQL = "INSERT INTO pokemons (nome, tipo1, tipo2, treinador_id) VALUES (%s, %s, %s, %s)"
+    return Executar_Comando(SQL, (NomePokemon, Tipo1, Tipo2, TreinadorID))
+
+def Pegar_Pokemons():
+    SQL = """
+        SELECT p.id, p.nome, p.tipo1, p.tipo2, t.nome AS treinador
+        FROM pokemons p, treinadores t
+        WHERE p.treinador_id = t.id
+        ORDER BY p.id DESC;
+    """
+    return Executar_Comando(SQL, Pegar_Dados=True)
+
+def Tela_Treinador():
+    st.header("Cadastrar Treinador")
+
+    Nome = st.text_input("Nome do Treinador:")
+    Cidade = st.text_input("Cidade de Origem:")
+
+    if st.button("Salvar Treinador"):
+        if Nome != "" and Cidade != "":
+            OK = Inserir_Treinador(Nome.capitalize(), Cidade.capitalize())
+            if OK:
+                st.success(f"Treinador '{Nome}' cadastrado com sucesso!")
+        else:
+            st.warning("Preencha todos os campos.")
 
 def Tela_Cadastro():
     st.header("Cadastrar Pokémon")
 
-    Tipos_Disponiveis = [
+    Tipos = [
         "Normal", "Fogo", "Água", "Grama", "Elétrico", "Gelo",
         "Lutador", "Venenoso", "Terra", "Voador", "Psíquico",
         "Inseto", "Pedra", "Fantasma", "Dragão", "Aço", "Fada",
@@ -72,52 +97,60 @@ def Tela_Cadastro():
     Coluna1, Coluna2 = st.columns(2)
 
     with Coluna1:
-        Tipo1 = st.selectbox("Tipo Principal:", Tipos_Disponiveis[:-1])
+        Tipo1 = st.selectbox("Tipo Principal:", Tipos[:-1])
 
     with Coluna2:
-        Tipo2Escolhido = st.selectbox("Segundo Tipo:", Tipos_Disponiveis)
-        if Tipo2Escolhido == "Nenhum":
-            Tipo2Escolhido = None
+        Tipo2Selecionado = st.selectbox("Segundo Tipo:", Tipos)
+        if Tipo2Selecionado == "Nenhum":
+            Tipo2Selecionado = None
+
+    Treinadores = Pegar_Treinadores()
+
+    if Treinadores is None or Treinadores.empty:
+        st.warning("Cadastre um treinador antes de cadastrar Pokémon!")
+        return
+
+    ListaNomes = Treinadores["nome"].tolist()
+    Escolhido = st.selectbox("Treinador Responsável:", ListaNomes)
+
+    TreinadorID = int(Treinadores[Treinadores["nome"] == Escolhido]["id"].iloc[0])
 
     if st.button("Salvar Pokémon"):
         if Nome != "":
-            Nome_Formatado = Nome.capitalize()
-            Inserir_OK = Inserir_Pokemon(Nome_Formatado, Tipo1, Tipo2Escolhido)
-
-            if Inserir_OK:
-                st.success(f"Pokémon '{Nome_Formatado}' cadastrado com sucesso!")
+            OK = Inserir_Pokemon(Nome.capitalize(), Tipo1, Tipo2Selecionado, TreinadorID)
+            if OK:
+                st.success(f"Pokémon '{Nome}' cadastrado com sucesso!")
         else:
-            st.warning("Digite um nome, por favor.")
-
+            st.warning("Digite um nome.")
 
 def Tela_Exebicao():
-    st.header("Lista de Pokémons Cadastrados")
+    st.header("Pokémons Cadastrados")
+    Tabela = Pegar_Pokemons()
 
-    TabelaPokemons = Pegar_Pokemons()
-
-    if TabelaPokemons is None:
+    if Tabela is None:
         return
-
-    if TabelaPokemons.empty:
-        st.info("Nenhum Pokémon Registrado no Momento!")
+    
+    if Tabela.empty:
+        st.info("Nenhum Pokémon Registrado!")
     else:
-        TabelaPokemons.columns = ["ID", "Nome", "Tipo 1", "Tipo 2"]
-        TabelaPokemons["Tipo 2"] = TabelaPokemons["Tipo 2"].fillna("—")
+        Tabela.columns = ["ID", "Nome", "Tipo 1", "Tipo 2", "Treinador"]
+        Tabela["Tipo 2"] = Tabela["Tipo 2"].fillna("—")
 
-        st.dataframe(TabelaPokemons, use_container_width=True)
+        st.dataframe(Tabela, use_container_width=True)
 
-        Total = len(TabelaPokemons)
-        st.caption(f"Total de Pokémon: {Total}")
+        st.caption(f"Total de Pokémon: {len(Tabela)}")
 
 def main():
-    st.title("POKÉDEX — Sistema do Aluno")
+    st.title("POKÉDEX ")
+    AbaTreinador, AbaCadastrar, AbaExebicao = st.tabs(["Cadastrar Treinador","Cadastrar Pokémon","Visualizar Pokémons"])
 
-    AbaCadastrar, AbaExebicao = st.tabs(["Cadastrar Pokémon", "Visualizar Pokémons"])
+    with AbaTreinador:
+        Tela_Treinador()
 
     with AbaCadastrar:
         Tela_Cadastro()
 
     with AbaExebicao:
         Tela_Exebicao()
-        
+
 main()
